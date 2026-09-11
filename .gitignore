@@ -1,0 +1,27 @@
+# Django sensitive configurations
+.env
+*.env
+
+# Databases (Crucial: stops your local SQLite file from overwriting production)
+*.sqlite3
+db.sqlite3
+
+# Python artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+
+# Virtual Environments
+venv/
+.venv/
+env/
+ENV/
+
+# Static and Media files
+staticfiles/
+media/
+
+# OS files
+.DS_Store
+Thumbs.db
