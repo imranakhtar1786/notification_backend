@@ -35,10 +35,10 @@ class RegisterSerializer(serializers.ModelSerializer):
             password=validated_data["password"],
         )
 
-        UserProfile.objects.create(
-            user=user,
-            phone_number=phone_number
-        )
+        profile, _ = UserProfile.objects.get_or_create(user=user)
+        if phone_number:
+            profile.phone_number = phone_number
+            profile.save()
 
         return user
 

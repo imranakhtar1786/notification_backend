@@ -15,7 +15,7 @@ load_dotenv(BASE_DIR / ".env")
 
 SECRET_KEY = os.getenv(
     "SECRET_KEY",
-    "django-insecure-development-key"
+    "django-insecure-notification-system-secret-key-production-32plus-chars-long-2026"
 )
 
 DEBUG = os.getenv("DEBUG", "True").lower() == "true"
@@ -46,7 +46,9 @@ INSTALLED_APPS = [
     # Third party
     "rest_framework",
     "rest_framework_simplejwt",
+    "rest_framework_simplejwt.token_blacklist",
     "corsheaders",
+
 
     # Local apps
     "accounts",
@@ -226,8 +228,9 @@ VAPID_PUBLIC_KEY = os.getenv(
 )
 
 VAPID_PRIVATE_KEY = os.getenv(
-    "VAPID_PRIVATE_KEY"
-)
+    "VAPID_PRIVATE_KEY",
+    ""
+).replace("\\n", "\n")
 
 VAPID_ADMIN_EMAIL = os.getenv(
     "VAPID_ADMIN_EMAIL",

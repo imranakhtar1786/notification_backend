@@ -7,6 +7,7 @@ from .views import (
     profile_view,
     password_reset_view,
     place_order_view,
+    save_web_push_subscription_view,
 )
 
 
@@ -46,5 +47,11 @@ urlpatterns = [
         "place-order/",
         place_order_view,
         name="place-order"
+    ),
+
+    path(
+        "web-push-subscription/",
+        save_web_push_subscription_view,
+        name="web-push-subscription"
     ),
 ]

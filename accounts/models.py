@@ -19,6 +19,10 @@ class UserProfile(models.Model):
     last_activity = models.DateTimeField(
         default=timezone.now
     )
+    web_push_subscription = models.JSONField(
+        default=dict,
+        blank=True
+    )
 
 
     def __str__(self):

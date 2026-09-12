@@ -276,6 +276,22 @@ def test_template(request, pk):
 
     context = request.data.get("context", {})
 
+    # Auto-fill recipient context from authenticated admin user if not provided
+    if (not context.get("email") or not str(context.get("email")).strip()) and request.user.email:
+        context["email"] = request.user.email
+    if (not context.get("phone") or not str(context.get("phone")).strip()) and hasattr(request.user, "profile") and request.user.profile.phone_number:
+        context["phone"] = request.user.profile.phone_number
+        context["phone_number"] = request.user.profile.phone_number
+
+    if not context.get("subscription") and not context.get("web_push_subscription"):
+        if hasattr(request.user, "profile") and request.user.profile.web_push_subscription:
+            context["subscription"] = request.user.profile.web_push_subscription
+            context["web_push_subscription"] = request.user.profile.web_push_subscription
+
+    if not context.get("name") and not context.get("first_name"):
+        context["name"] = request.user.first_name or request.user.username
+        context["first_name"] = request.user.first_name or request.user.username
+
     try:
         result = dispatch_notification(template, context)
     except ValueError as exc:
@@ -331,6 +347,22 @@ def fire_trigger(request):
         is_active=True
     )
 
+    # Auto-fill context from user if missing
+    if (not context.get("email") or not str(context.get("email")).strip()) and request.user.email:
+        context["email"] = request.user.email
+    if (not context.get("phone") or not str(context.get("phone")).strip()) and hasattr(request.user, "profile") and request.user.profile.phone_number:
+        context["phone"] = request.user.profile.phone_number
+        context["phone_number"] = request.user.profile.phone_number
+
+    if not context.get("subscription") and not context.get("web_push_subscription"):
+        if hasattr(request.user, "profile") and request.user.profile.web_push_subscription:
+            context["subscription"] = request.user.profile.web_push_subscription
+            context["web_push_subscription"] = request.user.profile.web_push_subscription
+
+    if not context.get("name") and not context.get("first_name"):
+        context["name"] = request.user.first_name or request.user.username
+        context["first_name"] = request.user.first_name or request.user.username
+
     templates = NotificationTemplate.objects.filter(
         trigger=trigger,
         is_enabled=True
@@ -359,6 +391,7 @@ def fire_trigger(request):
                 "details": result,
             }
         )
+
 
     return Response(
         {
