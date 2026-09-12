@@ -18,13 +18,19 @@ class NotificationAPITests(TestCase):
         self.client = APIClient()
         self.client.force_authenticate(self.user)
 
-        self.trigger = Trigger.objects.create(
-            name="Login",
+        self.trigger, _ = Trigger.objects.get_or_create(
             key="login",
-            description="User signs in",
+            defaults={
+                "name": "Login",
+                "description": "User signs in",
+            }
         )
 
+
+        NotificationTemplate.objects.filter(trigger=self.trigger).delete()
+
         self.email_template = NotificationTemplate.objects.create(
+
             trigger=self.trigger,
             channel="email",
             name="Login email",

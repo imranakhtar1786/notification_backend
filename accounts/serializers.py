@@ -1,8 +1,15 @@
 from django.contrib.auth.models import User
 from rest_framework import serializers
+from .models import UserProfile
 
 
 class RegisterSerializer(serializers.ModelSerializer):
+    phone_number = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        default="",
+        write_only=True
+    )
 
     password = serializers.CharField(
         write_only=True,
@@ -16,9 +23,11 @@ class RegisterSerializer(serializers.ModelSerializer):
             "username",
             "email",
             "password",
+            "phone_number",
         ]
 
     def create(self, validated_data):
+        phone_number = validated_data.pop("phone_number", "")
 
         user = User.objects.create_user(
             username=validated_data["username"],
@@ -26,10 +35,16 @@ class RegisterSerializer(serializers.ModelSerializer):
             password=validated_data["password"],
         )
 
+        UserProfile.objects.create(
+            user=user,
+            phone_number=phone_number
+        )
+
         return user
 
 
 class UserSerializer(serializers.ModelSerializer):
+    phone_number = serializers.SerializerMethodField()
 
     class Meta:
         model = User
@@ -38,6 +53,13 @@ class UserSerializer(serializers.ModelSerializer):
             "id",
             "username",
             "email",
+            "phone_number",
             "is_staff",
             "is_superuser",
-        ]   
+        ]
+
+    def get_phone_number(self, obj):
+        if hasattr(obj, "profile"):
+            return obj.profile.phone_number
+        return ""
+   
