@@ -127,12 +127,13 @@ def send_email_message(template, context):
 
 def send_whatsapp_message(template, context):
     phone_number = _resolve_phone_number(context)
+
     if not phone_number:
         raise ValueError("WhatsApp recipient is required in context['phone']")
 
     clean_phone = re.sub(r"\D", "", str(phone_number))
+
     if len(clean_phone) == 10:
-        # Automatically prepend India country code 91 for 10-digit numbers
         clean_phone = f"91{clean_phone}"
 
     if not clean_phone:
@@ -146,23 +147,40 @@ def send_whatsapp_message(template, context):
         return {
             "status": "skipped",
             "channel": "whatsapp",
+            "provider": "Meta WhatsApp",
             "reason": "WHATSAPP_ACCESS_TOKEN or WHATSAPP_PHONE_NUMBER_ID is not configured",
         }
 
-    message_text = ContextTemplateFormatter.render(getattr(template, "body", ""), context)
+    message_text = ContextTemplateFormatter.render(
+        getattr(template, "body", ""),
+        context,
+    )
+
     headers = {
         "Authorization": f"Bearer {access_token}",
         "Content-Type": "application/json",
     }
-    url = f"https://graph.facebook.com/{api_version}/{phone_number_id}/messages"
 
+    url = (
+        f"https://graph.facebook.com/"
+        f"{api_version}/{phone_number_id}/messages"
+    )
+
+    # Check whether a WhatsApp template is explicitly configured
     template_name = None
-    if isinstance(getattr(template, "metadata", None), dict):
-        template_name = template.metadata.get("template_name")
-    if not template_name and "hello_world" in getattr(template, "name", "").lower():
-        template_name = "hello_world"
 
-    # Use template payload if specified or if required outside 24h window
+    metadata = getattr(template, "metadata", None)
+
+    if isinstance(metadata, dict):
+        template_name = metadata.get("template_name")
+
+    if not template_name:
+        template_name = getattr(template, "template_name", None)
+
+    # -----------------------------
+    # Build payload
+    # -----------------------------
+
     if template_name:
         payload = {
             "messaging_product": "whatsapp",
@@ -170,61 +188,121 @@ def send_whatsapp_message(template, context):
             "type": "template",
             "template": {
                 "name": template_name,
-                "language": {"code": "en_US"}
+                "language": {
+                    "code": "en_US"
+                }
             }
         }
+
     else:
         payload = {
             "messaging_product": "whatsapp",
             "to": clean_phone,
             "type": "text",
-            "text": {"body": message_text},
+            "text": {
+                "body": message_text
+            }
         }
 
     try:
-        response = requests.post(url, headers=headers, json=payload, timeout=20)
-        
-        # If free-text fails (e.g. Meta Error 131047 / 131030 outside 24h window), fallback to hello_world template
-        if response.status_code == 400 and ("131030" in response.text or "131047" in response.text or "template" in response.text.lower()):
-            tmpl_payload = {
-                "messaging_product": "whatsapp",
-                "to": clean_phone,
-                "type": "template",
-                "template": {
-                    "name": "hello_world",
-                    "language": {"code": "en_US"}
-                }
-            }
-            tmpl_response = requests.post(url, headers=headers, json=tmpl_payload, timeout=20)
-            if tmpl_response.status_code == 200:
-                return {
-                    "status": "sent",
-                    "channel": "whatsapp",
-                    "provider": "Meta WhatsApp (Template Fallback)",
-                    "response": tmpl_response.json(),
+        response = requests.post(
+            url,
+            headers=headers,
+            json=payload,
+            timeout=20,
+        )
+
+        print(
+            f"[WHATSAPP API] Status: {response.status_code} "
+            f"| Response: {response.text}"
+        )
+
+        # --------------------------------
+        # Free-text failed → try hello_world
+        # --------------------------------
+
+        if response.status_code == 400 and not template_name:
+
+            try:
+                error_data = response.json()
+            except Exception:
+                error_data = {}
+
+            error_code = (
+                error_data
+                .get("error", {})
+                .get("code")
+            )
+
+            if error_code in [131030, 131047]:
+
+                hello_payload = {
+                    "messaging_product": "whatsapp",
+                    "to": clean_phone,
+                    "type": "template",
+                    "template": {
+                        "name": "hello_world",
+                        "language": {
+                            "code": "en_US"
+                        }
+                    }
                 }
 
-        response.raise_for_status()
+                hello_response = requests.post(
+                    url,
+                    headers=headers,
+                    json=hello_payload,
+                    timeout=20,
+                )
+
+                print(
+                    f"[WHATSAPP TEMPLATE FALLBACK] "
+                    f"Status: {hello_response.status_code} "
+                    f"| Response: {hello_response.text}"
+                )
+
+                if hello_response.ok:
+                    return {
+                        "status": "accepted",
+                        "channel": "whatsapp",
+                        "provider": "Meta WhatsApp - hello_world",
+                        "response": hello_response.json(),
+                    }
+
+        # --------------------------------
+        # Final result
+        # --------------------------------
+
+        if response.ok:
+            return {
+                "status": "accepted",
+                "channel": "whatsapp",
+                "provider": "Meta WhatsApp",
+                "response": response.json(),
+            }
+
         return {
-            "status": "sent",
+            "status": "failed",
             "channel": "whatsapp",
             "provider": "Meta WhatsApp",
-            "response": response.json(),
-        }
-    except Exception as exc:
-        error_details = str(exc)
-        if 'response' in locals() and hasattr(response, 'text'):
-            error_details = f"{exc} - Body: {response.text}"
-        print(f"[MOCK WHATSAPP SENT] To: {clean_phone} | Message: {message_text} (Notice: Meta API failed: {error_details})")
-        return {
-            "status": "sent (mock fallback)",
-            "channel": "whatsapp",
-            "provider": "Meta WhatsApp Mock Mode",
-            "recipient": clean_phone,
-            "message": message_text,
-            "error": error_details,
+            "status_code": response.status_code,
+            "error": response.text,
         }
 
+    except requests.RequestException as exc:
+
+        print(
+            f"[WHATSAPP FAILED] "
+            f"To: {clean_phone} | Error: {exc}"
+        )
+
+        return {
+            "status": "failed",
+            "channel": "whatsapp",
+            "provider": "Meta WhatsApp",
+            "recipient": clean_phone,
+            "error": str(exc),
+        }
 
 def send_web_push_message(template, context):
     subscription = _resolve_web_push_subscription(context)
