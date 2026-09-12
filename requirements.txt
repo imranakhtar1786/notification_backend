@@ -13,6 +13,7 @@ django-cors-headers==4.9.0
 djangorestframework==3.18.1
 djangorestframework_simplejwt==5.5.1
 frozenlist==1.8.0
+gunicorn==26.2.0
 http-ece==1.2.1
 idna==3.19
 multidict==6.8.0
