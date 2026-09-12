@@ -6,6 +6,7 @@ from .views import (
     logout_view,
     profile_view,
     password_reset_view,
+    password_reset_confirm_view,
     place_order_view,
     save_web_push_subscription_view,
 )
@@ -41,6 +42,12 @@ urlpatterns = [
         "password-reset/",
         password_reset_view,
         name="password-reset"
+    ),
+
+    path(
+        "password-reset-confirm/",
+        password_reset_confirm_view,
+        name="password-reset-confirm"
     ),
 
     path(

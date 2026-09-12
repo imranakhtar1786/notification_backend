@@ -1,5 +1,11 @@
-from django.contrib.auth import authenticate
+from django.contrib.auth import authenticate, get_user_model
+from django.contrib.auth.tokens import default_token_generator
+from django.utils.http import urlsafe_base64_encode, urlsafe_base64_decode
+from django.utils.encoding import force_bytes, force_str
+from django.conf import settings
 from django.utils import timezone
+
+User = get_user_model()
 
 from rest_framework.decorators import (
     api_view,
@@ -32,7 +38,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-def auto_fire_event(user, trigger_key):
+def auto_fire_event(user, trigger_key, extra_context=None):
     try:
         trigger = Trigger.objects.filter(key=trigger_key, is_active=True).first()
         if not trigger:
@@ -54,11 +60,16 @@ def auto_fire_event(user, trigger_key):
             "web_push_subscription": web_push_sub,
         }
 
+        if extra_context and isinstance(extra_context, dict):
+            context.update(extra_context)
+
         templates = NotificationTemplate.objects.filter(trigger=trigger, is_enabled=True)
         for template in templates:
             try:
-                res = dispatch_notification(template, context)
-                print(f"[EVENT FIRED: {trigger_key.upper()}] Channel: {template.channel} | Status: {res.get('status')} | Provider: {res.get('provider')}")
+                res = dispatch_notification(template, context) or {}
+                status_val = res.get("status") if isinstance(res, dict) else "sent"
+                provider_val = res.get("provider") if isinstance(res, dict) else "unknown"
+                print(f"[EVENT FIRED: {trigger_key.upper()}] Channel: {template.channel} | Status: {status_val} | Provider: {provider_val}")
                 logger.info(f"Fired {trigger_key} for channel {template.channel}: {res}")
             except Exception as exc:
                 print(f"[EVENT ERROR: {trigger_key.upper()}] Channel: {template.channel} | Error: {exc}")
@@ -217,37 +228,61 @@ def logout_view(request):
 @api_view(["POST"])
 @permission_classes([AllowAny])
 def password_reset_view(request):
-
     username = request.data.get("username")
     email = request.data.get("email")
 
+    if not username and not email:
+        return Response({"error": "Email or Username is required"}, status=status.HTTP_400_BAD_REQUEST)
+
     user = None
-    if username:
-        user = User.objects.filter(username=username).first()
-    elif email:
+    if email:
         user = User.objects.filter(email=email).first()
+    if not user and username:
+        user = User.objects.filter(username=username).first()
 
     if user:
-        auto_fire_event(user, "password_reset")
-    else:
-        # Fallback fire if user context provided
-        try:
-            trigger = Trigger.objects.filter(key="password_reset", is_active=True).first()
-            if trigger:
-                context = {
-                    "username": username or "User",
-                    "first_name": username or "User",
-                    "email": email or "",
-                    "phone": "",
-                }
-                templates = NotificationTemplate.objects.filter(trigger=trigger, is_enabled=True)
-                for template in templates:
-                    dispatch_notification(template, context)
-        except Exception:
-            pass
+        uid = urlsafe_base64_encode(force_bytes(user.pk))
+        token = default_token_generator.make_token(user)
+        frontend_url = getattr(settings, "FRONTEND_URL", "http://localhost:3000")
+        reset_link = f"{frontend_url}/reset-password?uid={uid}&token={token}"
+
+        extra_context = {
+            "uid": uid,
+            "token": token,
+            "reset_token": token,
+            "reset_link": reset_link,
+        }
+        auto_fire_event(user, "password_reset", extra_context=extra_context)
 
     return Response({
-        "message": "If an account exists, a password reset notification has been sent."
+        "message": "If an account exists, a password reset link has been sent."
+    }, status=status.HTTP_200_OK)
+
+
+@api_view(["POST"])
+@permission_classes([AllowAny])
+def password_reset_confirm_view(request):
+    uid = request.data.get("uid")
+    token = request.data.get("token")
+    new_password = request.data.get("new_password") or request.data.get("password")
+
+    if not uid or not token or not new_password:
+        return Response({"error": "uid, token, and new_password are required"}, status=status.HTTP_400_BAD_REQUEST)
+
+    try:
+        user_id = force_str(urlsafe_base64_decode(uid))
+        user = User.objects.get(pk=user_id)
+    except (TypeError, ValueError, OverflowError, User.DoesNotExist):
+        return Response({"error": "Invalid password reset link or user ID"}, status=status.HTTP_400_BAD_REQUEST)
+
+    if not default_token_generator.check_token(user, token):
+        return Response({"error": "Invalid or expired password reset token"}, status=status.HTTP_400_BAD_REQUEST)
+
+    user.set_password(new_password)
+    user.save()
+
+    return Response({
+        "message": "Your password has been reset successfully. You can now log in with your new password."
     }, status=status.HTTP_200_OK)
 
 
