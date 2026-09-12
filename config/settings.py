@@ -1,5 +1,6 @@
 from pathlib import Path
 import os
+import sys
 
 from dotenv import load_dotenv
 
@@ -64,6 +65,7 @@ MIDDLEWARE = [
     "corsheaders.middleware.CorsMiddleware",
 
     "django.middleware.security.SecurityMiddleware",
+    "whitenoise.middleware.WhiteNoiseMiddleware",
 
     "django.contrib.sessions.middleware.SessionMiddleware",
 
@@ -149,6 +151,14 @@ USE_TZ = True
 
 STATIC_URL = "static/"
 STATIC_ROOT = os.path.join(BASE_DIR, "staticfiles")
+STORAGES = {
+    "default": {
+        "BACKEND": "django.core.files.storage.FileSystemStorage",
+    },
+    "staticfiles": {
+        "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage" if "whitenoise" in sys.modules else "django.contrib.staticfiles.storage.StaticFilesStorage",
+    },
+}
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
